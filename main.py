@@ -1,69 +1,59 @@
-from decimal import Decimal, getcontext
 import os
+import time
+from mpmath import mp
+
+# Try to enable gmpy2 backend for mpmath if available
+try:
+    import gmpy2
+    print("✅ Using gmpy2 backend for faster calculations.")
+except ImportError:
+    print("⚙️ gmpy2 not found — using default mpmath backend.")
 
 def calculate_pi(precision):
-    # Set the precision for Decimal calculations
-    getcontext().prec = precision + 2  # extra digits for accuracy
-    C = 426880 * Decimal(10005).sqrt()
-    M = 1
-    L = 13591409
-    X = 1
-    K = 6
-    S = L
-
-    for n in range(1, precision):
-        M = (K**3 - 16 * K) * M // n**3
-        L += 545140134
-        X *= -262537412640768000
-        S += Decimal(M * L) / X
-        K += 12
-
-    pi = C / S
-    return str(pi)[:-1]  # remove the last digit for accuracy
+    mp.dps = precision
+    return mp.nstr(mp.pi, n=precision)
 
 def read_last_precision():
-    """Read the last precision from a file."""
-    try:
-        if os.path.exists("last_precision.txt"):
-            with open("last_precision.txt", "r") as file:
-                return int(file.read().strip())
-    except FileNotFoundError:
-        print("last_precision.txt not found. Starting from precision 1.")
-    except ValueError:
-        print("Invalid value in last_precision.txt. Starting from precision 1.")
-    except Exception as e:
-        print(f"Unexpected error while reading last precision: {e}")
-
-    return 1  # Start from 1 if the file doesn't exist
+    """Read last saved precision from file."""
+    if os.path.exists("last_precision.txt"):
+        try:
+            with open("last_precision.txt", "r") as f:
+                return int(f.read().strip())
+        except Exception:
+            pass
+    return 1000  # start at 1k digits if none saved
 
 def write_last_precision(precision):
-    """Write the current precision to a file."""
-    try:
-        with open("last_precision.txt", "w") as file:
-            file.write(str(precision))
-    except IOError as e:
-        print(f"IO error while writing last precision: {e}")
-    except Exception as e:
-        print(f"Unexpected error while writing last precision: {e}")
+    """Save current precision to file."""
+    with open("last_precision.txt", "w") as f:
+        f.write(str(precision))
 
 def main():
-    precision = read_last_precision()  # Read the last precision
+    precision = read_last_precision()
     print(f"Resuming from precision: {precision}")
 
     while True:
+        start = time.time()
         try:
             pi_value = calculate_pi(precision)
-            with open("Pi.txt", "w") as file:
-                file.write(pi_value)
-            print(f"Calculated π to {precision} digits: {pi_value}")
-            write_last_precision(precision)  # Save the current precision
-            precision += 1  # Increase precision for the next calculation
+            elapsed = time.time() - start
+            print(f"Calculated π to {precision} digits in {elapsed:.2f}s")
+
+            # Save every 5k digits to reduce disk I/O
+            if precision % 5000 == 0:
+                with open("Pi.txt", "w") as f:
+                    f.write(pi_value)
+                write_last_precision(precision)
+                print(f"💾 Saved Pi.txt and last precision at {precision} digits.")
+
+            # Increase precision in bigger jumps for performance
+            precision += 1000
         except MemoryError:
-            print("Memory error during calculation. Please reduce the precision.")
+            print("❌ Out of memory — try lowering precision or step size.")
             break
         except Exception as e:
-            print(f"Unexpected error during calculation: {e}")
-            break  # Exit the loop on error
+            print(f"Unexpected error: {e}")
+            break
 
 if __name__ == "__main__":
     main()
